@@ -166,8 +166,8 @@ def process_data_single_init_time(
 
     # Some checks that need to be done before the code can be run
     try:
-        importer.test_xarray_dataset(df_observation, is_observation=True)
-        importer.test_xarray_dataset(df_model, is_observation=False)
+        importer.test_xarray_dataset(df_observation)
+        importer.test_xarray_dataset(df_model)
     except Exception as e:
         raise ValueError("The inputted data for single_init_time "
                          "does not match the expected naming conventions. Please read the README."
@@ -194,16 +194,16 @@ def process_data_single_init_time(
                                                                  interpolation_method)
 
     # If the model data has an ensemble dimension, we need to chunk it to make it parallelizable
-    df_model_chunked = df_model_aligned.chunk({'y': -1, 'x': -1, 'valid_time': 1, 'ens_number': -1})
+    df_model_chunked = df_model_aligned.chunk({'y': -1, 'x': -1, 'time': 1, 'ens_number': -1})
 
     # Computing the mask for the data
     # TODO: mask should be computed before the setting to nans
-    data_mask = ((np.isfinite(df_observation_aligned['precipitation'])) & (
-        np.isfinite(df_model_chunked['precipitation'].mean('ens_number')))).chunk({"valid_time": 1})
+    data_mask = ((np.isfinite(df_observation_aligned['precip_intensity'])) & (
+        np.isfinite(df_model_chunked['precip_intensity'].mean('ens_number')))).chunk({"time": 1})
 
     # Mask non-finite values
-    df_obs_masked = df_observation_aligned['precipitation'].where(data_mask).chunk({"valid_time": 1})
-    df_model_masked = df_model_chunked['precipitation'].where(data_mask).chunk({"valid_time": 1, "ens_number": -1})
+    df_obs_masked = df_observation_aligned['precip_intensity'].where(data_mask).chunk({"time": 1})
+    df_model_masked = df_model_chunked['precip_intensity'].where(data_mask).chunk({"time": 1, "ens_number": -1})
 
     # Threshold assignment for observations and forecasts
     df_obs_threshold_bool = [df_obs_masked >= threshold for threshold in thresholds]
@@ -217,8 +217,8 @@ def process_data_single_init_time(
     df_model_threshold_bool = xr.concat(df_model_threshold_bool, "threshold").chunk({"threshold": -1})
 
     # Rechunk data to a single chunk along 'y' and 'x', enabling dask to parallelize the computation
-    df_obs_masked = df_obs_masked.chunk({'y': -1, 'x': -1, 'valid_time': 1})
-    df_model_masked = df_model_masked.chunk({'y': -1, 'x': -1, 'valid_time': 1, 'ens_number': 1})
+    df_obs_masked = df_obs_masked.chunk({'y': -1, 'x': -1, 'time': 1})
+    df_model_masked = df_model_masked.chunk({'y': -1, 'x': -1, 'time': 1, 'ens_number': 1})
 
     if timing:
         start_time = print_timing_and_reset('\t', 'prepocessing', start_time)
@@ -242,8 +242,8 @@ def process_data_single_init_time(
                                          dim=['y', 'x'])
         scores["CRPS"] = xs.crps_ensemble(df_obs_masked, df_model_masked.chunk({"ens_number":-1}), 
                                                                member_dim='ens_number', dim=['y', 'x'])
-        scores["RankHist"] = xs.rank_histogram(df_obs_masked.chunk({"valid_time":1}), 
-                                      df_model_masked.chunk({"ens_number":-1, "valid_time":1}), 
+        scores["RankHist"] = xs.rank_histogram(df_obs_masked.chunk({"time":1}), 
+                                      df_model_masked.chunk({"ens_number":-1, "time":1}), 
                                       dim=['y', 'x'], 
                                       member_dim='ens_number')
         scores["Reliability"] = xs.reliability(df_obs_threshold_bool, df_model_threshold_bool.mean(dim='ens_number'), 
@@ -264,23 +264,23 @@ def process_data_single_init_time(
     threshold_np = np.array(thresholds)
     kernel_np = np.array(fss_window_sizes)
 
-    df_obs_masked = df_obs_masked.chunk({"valid_time":1})
-    df_model_masked = df_model_masked.chunk({"ens_number":-1, "valid_time":1})
+    df_obs_masked = df_obs_masked.chunk({"time":1})
+    df_model_masked = df_model_masked.chunk({"ens_number":-1, "time":1})
 
-    for valtime in df_model_masked.valid_time.values:
+    for valtime in df_model_masked.time.values:
 
-        fss = delayed(mod_fss.fss_prob)(fcst=df_model_masked.sel(valid_time=valtime), 
-                                        obs=df_obs_masked.sel(valid_time=valtime), thrsh=threshold_np, kernel=kernel_np)
+        fss = delayed(mod_fss.fss_prob)(fcst=df_model_masked.sel(time=valtime), 
+                                        obs=df_obs_masked.sel(time=valtime), thrsh=threshold_np, kernel=kernel_np)
         fractional_skill_scores_prob.append(fss)
 
     results = delayed(np.stack)(fractional_skill_scores_prob)
 
-    # Convert list of FSS into a DataArray with valid_time and thresholds as coordinates
+    # Convert list of FSS into a DataArray with time and thresholds as coordinates
     scores["FSS_probabilistic"] = delayed(xr.DataArray)(
         results,
-        dims=["valid_time", "threshold", "window_size"],
+        dims=["time", "threshold", "window_size"],
         coords={
-            "valid_time": df_model_masked.valid_time.values,
+            "time": df_model_masked.time.values,
             "threshold": thresholds,
             "window_size": fss_window_sizes
         }
@@ -299,25 +299,25 @@ def process_data_single_init_time(
                 kernel=kernel)
             return scores
 
-        df_obs_masked = df_obs_masked.chunk({"valid_time":1})
-        df_model_masked = df_model_masked.chunk({"ens_number":1, "valid_time":1})
+        df_obs_masked = df_obs_masked.chunk({"time":1})
+        df_model_masked = df_model_masked.chunk({"ens_number":1, "time":1})
 
         tasks = []
         for i in range(len(df_model_masked.ens_number)):
-            for j in range(len(df_model_masked.valid_time)):
-                tasks.append(fss_det_dasked(df_model_masked.isel(ens_number=i, valid_time=j), df_obs_masked.isel(valid_time=j)))
+            for j in range(len(df_model_masked.time)):
+                tasks.append(fss_det_dasked(df_model_masked.isel(ens_number=i, time=j), df_obs_masked.isel(time=j)))
 
         results = delayed(np.array)(tasks)
         results = delayed(np.reshape)(results, (len(df_model_masked.ens_number), 
-                                                len(df_model_masked.valid_time), 
+                                                len(df_model_masked.time), 
                                                 len(threshold_np), len(kernel_np)))
 
         scores["FSS_per_member"] = delayed(xr.DataArray)(
             results,
-            dims=["ens_number", "valid_time", "threshold", "window_size"],
+            dims=["ens_number", "time", "threshold", "window_size"],
             coords={
                 "ens_number": df_model_masked.ens_number.values,
-                "valid_time": df_model_masked.valid_time.values,
+                "time": df_model_masked.time.values,
                 "threshold": thresholds,
                 "window_size": fss_window_sizes
             }
