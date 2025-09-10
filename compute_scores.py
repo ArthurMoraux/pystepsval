@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import zarr
+from numcodecs import Blosc
 import time
 import traceback
 import logging
@@ -37,7 +38,7 @@ os.makedirs(traceback_log_dir, exist_ok=True)
 
 # Paths definition
 pysteps_dir = "C:/Users/u0168535/.conda/envs/pysteps_dev/pystepsval/refactoring_arthur/test_data/pysteps"
-local_data_dir = "C:/Users/u0168535/.conda/envs/pysteps_dev/pystepsval/refactoring_arthur/test_data/pysteps"
+local_data_dir = "C:/Users/u0168535/.conda/envs/pysteps_dev/pystepsval/refactoring_arthur/test_data/local"
 scores_dir = "C:/Users/u0168535/.conda/envs/pysteps_dev/pystepsval/refactoring_arthur/test_data/scores"
 zarr_fp = os.path.join(scores_dir, "scores.zarr")
 
@@ -49,7 +50,9 @@ os.makedirs(scores_dir, exist_ok=True)
 thresholds = [0.1,0.5,1.0,5.0]
 bin_edges = np.linspace(-0.000001, 1.000001, 11)
 bins_x = np.arange(0.05, 1, 0.1)
-fss_window_sizes = [5, 10, 30, 60]
+window_sizes = [1, 5, 11, 21]
+conditioning = 'single'
+extent_mask = None
 
 def load_from_afd_pysteps(pysteps_fn, pysteps_dir, local_data_dir):
     """Copy a PySTEPS NetCDF file from a remote directory to a temporary local directory, 
@@ -69,7 +72,7 @@ def load_from_afd_pysteps(pysteps_fn, pysteps_dir, local_data_dir):
     shutil.copyfile(pysteps_fp, local_nowcast_fp)
     
     pysteps_ds = read_netcdf(local_nowcast_fp)
-    os.remove(local_nowcast_fp)
+    # os.remove(local_nowcast_fp)
     
     return pysteps_ds
 
@@ -107,7 +110,7 @@ def create_zarr_dataset(zarr_fp, scores):
         scores (xr.Dataset): Dataset containing score variables to store.
     """
     # Define encoding for Zarr file
-    compressor = zarr.Blosc(cname="zstd", clevel=5)
+    compressor = Blosc(cname="zstd", clevel=5)
     
     encoding = {}
     for data_var in scores.data_vars:
@@ -124,14 +127,13 @@ def create_zarr_dataset(zarr_fp, scores):
     # Rechunk scores variables
     for data_var in scores.data_vars:
         var_chunking = {
-            scores[data_var].dims[i]:encoding[data_var]["chunks"][i] 
+            scores[data_var].dims[i]:encoding[data_var]["chunks"][i]
             for i in range(len(scores[data_var].dims))
         }
         scores[data_var] = scores[data_var].chunk(var_chunking)
     
     # Create Zarr file
     scores.to_zarr(zarr_fp, mode="w", encoding=encoding, consolidated=True)
-
     
 def initialize_zarr_dataset(zarr_fp, pysteps_dir, local_data_dir):
     """Initialize the Zarr dataset on the disk by iterating through PySTEPS files until it successfully 
@@ -148,13 +150,13 @@ def initialize_zarr_dataset(zarr_fp, pysteps_dir, local_data_dir):
     pysteps_fns = sorted(os.listdir(pysteps_dir))
     
     for pysteps_fn in pysteps_fns:
+        # pysteps_fn = pysteps_fns[0]
         try:
             model = load_from_afd_pysteps(pysteps_fn, pysteps_dir, local_data_dir)
 
             # Load radqpe files
-            obs = read_radar(model.valid_time)
-    
-
+            obs = read_radar(model.time)
+            
             # Computing scores
             scores = process_data_single_init_time(
                 model,#.load(),#.isel(valid_time=slice(0,10), ens_number=slice(0,4)), 
@@ -162,12 +164,12 @@ def initialize_zarr_dataset(zarr_fp, pysteps_dir, local_data_dir):
                 thresholds=thresholds, 
                 bin_edges=bin_edges, 
                 bins_x=bins_x, 
-                fss_window_sizes=fss_window_sizes, 
+                window_sizes=window_sizes, 
                 timing=True)
-
-            scores = transform_dims(scores)
+            
             scores = scores.compute()
-
+            
+            scores.to_netcdf('C:/Users/u0168535/.conda/envs/pysteps_dev/pystepsval/refactoring_arthur/test_data/scores/scores.nc')
             create_zarr_dataset(zarr_fp, scores)
             return
         
@@ -246,7 +248,7 @@ def process_pysteps_file(pysteps_fn, pysteps_dir, local_data_dir):
         frt = np.array([pd.to_datetime(start_date)], dtype='datetime64[ns]')
         scores = scores.assign_coords(forecast_reference_time=frt)
         return scores
-        
+    
     t1 = time.time()
     print(f"Elapsed time for data loading: {round(t1 - t0, 3)} s")
 
@@ -256,8 +258,9 @@ def process_pysteps_file(pysteps_fn, pysteps_dir, local_data_dir):
         obs,#.load(), 
         thresholds=thresholds, 
         bin_edges=bin_edges, 
-        bins_x=bins_x, 
-        fss_window_sizes=fss_window_sizes, 
+        bins_x=bins_x,
+        window_sizes=window_sizes, 
+        conditioning=conditioning,
         timing=False)
     
     scores = transform_dims(scores)
@@ -363,35 +366,35 @@ else:
     
 # Process continuously pysteps files, compute the scores and append them in the Zarr dataset
 try:
-    while True:
+    # while True:
+    
+    pysteps_fns = get_pysteps_fns(pysteps_dir, zarr_fp)
+    
+    # Compute and save scores for all unprocessed pysteps files
+    for pysteps_fn in pysteps_fns:
         
-        pysteps_fns = get_pysteps_fns(pysteps_dir, zarr_fp)
+        try:
+            # Compute scores and store them in zarr file
+            scores = process_pysteps_file(pysteps_fn, pysteps_dir, local_data_dir)
+            save_scores_to_zarr(scores, zarr_fp)
         
-        # Compute and save scores for all unprocessed pysteps files
-        for pysteps_fn in pysteps_fns:
+        except Exception as e:
             
-            try:
-                # Compute scores and store them in zarr file
-                scores = process_pysteps_file(pysteps_fn, pysteps_dir, local_data_dir)
-                save_scores_to_zarr(scores, zarr_fp)
+            # Log the exception
+            logging.error(f"Unexpected error while processing {pysteps_fn}: {e}")
             
-            except Exception as e:
-                
-                # Log the exception
-                logging.error(f"Unexpected error while processing {pysteps_fn}: {e}")
-                
-                # Print traceback
-                traceback.print_exc()
-                
-                # Log the traceback in a separate file
-                traceback_log_fp = os.path.join(traceback_log_dir, pysteps_fn.split(".")[0] + "_traceback.txt")
-                with open(traceback_log_fp, 'w') as f:
-                    f.write(str(e))
-                    f.write(traceback.format_exc())
-                
-                continue
-                
-        time.sleep(1)
+            # Print traceback
+            traceback.print_exc()
+            
+            # Log the traceback in a separate file
+            traceback_log_fp = os.path.join(traceback_log_dir, pysteps_fn.split(".")[0] + "_traceback.txt")
+            with open(traceback_log_fp, 'w') as f:
+                f.write(str(e))
+                f.write(traceback.format_exc())
+            
+            continue
+            
+    # time.sleep(1)
 
 except KeyboardInterrupt:
     logging.error("Script stopped by user")

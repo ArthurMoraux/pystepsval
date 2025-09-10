@@ -36,7 +36,7 @@ def test_xarray_dataset(ds):
         print(f"All required dimensions {required_dims} are present.")
 
     # Check for 'precipitation_rate' variable
-    if 'precipitation' not in ds.data_vars:
+    if 'precip_intensity' not in ds.data_vars:
         raise ValueError("The dataset does not contain the required data variable 'precipitation'.")
     else:
         print("'precipitation' variable is present in the dataset.")
@@ -71,6 +71,7 @@ def read_netcdf(filename):
         lat=(("y", "x"), ds.lat.data),
         forecast_reference_time=((), pd.to_datetime(start_date))
     )
+    ds = ds.drop_vars("lcc")
     
     # add lead times to coordinates
     step = ds.time.data[1] - ds.time.data[0]
@@ -138,9 +139,9 @@ def read_radar(datetimes):
     # get the radar paths and filename formats
     rmi = pysteps.rcparams.data_sources.rmi
     # root_path = rmi.root_path
-    root_path = "/mnt/RADQPE2/archive/"
-    path_fmt = rmi.path_fmt
-    fn_pattern = rmi.fn_pattern
+    root_path = "C:/Users/u0168535/.conda/envs/pysteps_dev/pystepsval/refactoring_arthur/test_data/radar"
+    path_fmt = "" #rmi.path_fmt
+    fn_pattern = "%Y%m%d%H%M00.rad.best.comp.rate.qpe_edk" #rmi.fn_pattern
     fn_ext = rmi.fn_ext
     importer_kwargs = rmi.importer_kwargs
     startdate = datetimes.isel(time=0).data

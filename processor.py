@@ -15,7 +15,7 @@ def validate_inputs(
         thresholds: List[float],
         bin_edges: np.ndarray,
         bins_x: np.ndarray,
-        fss_window_sizes: List[int]
+        window_sizes: List[int]
 ):
     """
     Validate the types and dimensions of the inputs for the model and observation data.
@@ -26,7 +26,7 @@ def validate_inputs(
     - thresholds (List[float]): List of thresholds to be used for binary events.
     - bin_edges (np.ndarray): Array of bin edges used for histograms and reliability diagrams.
     - bins_x (np.ndarray): Array of bin centers for probability bins.
-    - fss_window_sizes (List[int]): List of window sizes for calculating the Fraction Skill Score (FSS).
+    - window_sizes (List[int]): List of window sizes for calculating the Fraction Skill Score (FSS).
 
     Raises:
     - TypeError: If any of the input parameters do not match the expected type or dimensions.
@@ -47,10 +47,10 @@ def validate_inputs(
     if not isinstance(bins_x, np.ndarray):
         raise TypeError("bins_x must be a numpy array")
 
-    # Check fss_window_sizes is a list of integers >= 1
-    if not isinstance(fss_window_sizes, list) or not all(
-            isinstance(w, int) and w >= 1 for w in fss_window_sizes):
-        raise TypeError("fss_window_sizes must be a list of integers, each >= 1")
+    # Check window_sizes is a list of integers >= 1
+    if not isinstance(window_sizes, list) or not all(
+            isinstance(w, int) and w >= 1 for w in window_sizes):
+        raise TypeError("window_sizes must be a list of integers, each >= 1")
 
 
 def histogram_only(data, bins):
@@ -79,7 +79,7 @@ def print_timing_and_reset(prefix, label, start_time):
 
 
 def compute_fss(NP_o, NP_f, fss_version='fss', dim=['y', 'x'], ens_dim='ens_number',
-                window_size=11, noise_0=1e-10):
+                noise_0=1e-10):
     """
     Compute the Fraction Skill Score (FSS) and its ensemble variants for spatial verification.
 
@@ -99,8 +99,6 @@ def compute_fss(NP_o, NP_f, fss_version='fss', dim=['y', 'x'], ens_dim='ens_numb
         Spatial dimensions to aggregate over (default: ['y','x']).
     ens_dim : str, optional
         Ensemble member dimension name (default: 'ens_number').
-    window_size : int, optional
-        Size of the rolling window for neighborhood probability (default: 11).
     noise_0 : float, optional
         Small constant to avoid division by zero (default: 1e-10).
 
@@ -124,16 +122,12 @@ def compute_fss(NP_o, NP_f, fss_version='fss', dim=['y', 'x'], ens_dim='ens_numb
     else:
         fss_version = fss_version.lower()
     
-    # # Smooth observed and forecast fields
-    # NP_o = BP_o.rolling(y=window_size, x=window_size, center=True).mean()
-    # NP_f = BP_f.rolling(y=window_size, x=window_size, center=True).mean()
-
     # Probabilistic FSS: Use ensemble mean forecast
     if fss_version == 'pfss':
         NP_f = NP_f.mean(dim=ens_dim, keepdims=True)
-
+    
     # Compute FBS and WFBS
-    FBS = (NP_f - NP_o) ** 2
+    FBS = (NP_f + -1*NP_o) ** 2
     WFBS = NP_f ** 2 + NP_o ** 2
     FBS_sum = FBS.sum(dim)
     WFBS_sum = WFBS.sum(dim)
@@ -247,7 +241,10 @@ def apply_precip_masks(
     df_obs_masked = df_obs_masked.chunk({'y': -1, 'x': -1, 'time': 1, 'ens_number': 1})
     df_model_masked = df_model_masked.chunk({'y': -1, 'x': -1, 'time': 1, 'ens_number': 1})
     
-    return df_obs_masked, df_model_masked, df_obs_threshold_bool_winsize, df_model_threshold_bool_winsize, df_model_threshold_bool_mean
+    return [df_obs_masked, df_model_masked, 
+            df_obs_threshold_bool, df_model_threshold_bool,
+            df_obs_threshold_bool_winsize, df_model_threshold_bool_winsize,
+            df_model_threshold_bool_mean]
     
 
 def process_data_single_init_time(
@@ -257,7 +254,7 @@ def process_data_single_init_time(
         window_sizes: List[int],
         bin_edges: np.ndarray,
         bins_x: np.ndarray,
-        reduce_ensemble=None,
+        # reduce_ensemble=None,
         conditioning='single',
         interpolation_method='nearest_s2d',
         extent_mask=None,
@@ -283,6 +280,9 @@ def process_data_single_init_time(
     # Start the timer
     start_time = time.time()
 
+    # df_model = model
+    # df_observation = obs
+    # filename = 
     # Validate input types and dimensions
     validate_inputs(df_model, df_observation, thresholds, bin_edges, bins_x,
                     window_sizes)
@@ -306,46 +306,46 @@ def process_data_single_init_time(
     # Initialize scores dictionary
     scores = {}
     
-    [df_obs_masked, df_model_masked,
-     df_obs_threshold_bool_winsize,
-     df_model_threshold_bool_winsize,
-     df_model_threshold_bool_mean] = apply_precip_masks(df_observation,
-                                                        df_model,
-                                                        thresholds=thresholds,
-                                                        window_sizes=window_sizes,
-                                                        reduce_ensemble=reduce_ensemble,
-                                                        conditioning=conditioning,
-                                                        interpolation_method=interpolation_method,
-                                                        extent_mask=extent_mask)
+    [df_obs_masked, df_model_masked, 
+     df_obs_threshold_bool, df_model_threshold_bool,
+     df_obs_threshold_bool_winsize, df_model_threshold_bool_winsize,
+     df_model_threshold_bool_mean] = apply_precip_masks(
+         df_observation,
+         df_model,
+         thresholds=thresholds,
+         window_sizes=window_sizes,
+         conditioning=conditioning,
+         extent_mask=extent_mask
+         )
+    
+    # Note: The deterministic scores are calculated on the ensemble mean
+    df_obs_masked_mean = df_obs_masked.mean(dim='ens_number')
+    df_model_masked_mean = df_model_masked.mean(dim='ens_number')
     
     if timing:
         start_time = print_timing_and_reset('\t', 'prepocessing', start_time)
     print("\tDone with all preprocessing for runtime: " + str(init_time))
     
     # Deterministic scores
-    # Note: The deterministic scores are calculated on the ensemble mean
-    df_obs_masked_mean = df_obs_masked.mean(dim='ens_number')
-    df_model_masked_mean = df_model_masked.mean(dim='ens_number')
-    
     scores["RMSE_deterministic"] = xs.rmse(df_obs_masked_mean, df_model_masked_mean, ["y", "x"], skipna=True)
     scores["ME_deterministic"] = xs.me(df_obs_masked_mean, df_model_masked_mean, ["y", "x"], skipna=True)
     scores["MAPE_deterministic"] = xs.mape(df_obs_masked_mean, df_model_masked_mean, ["y", "x"], skipna=True)
-
+    
     # Probabilistic scores
     if df_model_masked.sizes['ens_number'] > 1:
         scores["RMSE_probabilistic"] = xs.rmse(df_obs_masked, df_model_masked, ["y", "x"], skipna=True)
         scores["ME_probabilistic"] = xs.me(df_obs_masked, df_model_masked, ["y", "x"], skipna=True)
         scores["MAPE_probabilistic"] = xs.mape(df_obs_masked, df_model_masked, ["y", "x"], skipna=True)
-        scores["Brier"] = xs.threshold_brier_score(df_obs_masked, df_model_masked.chunk({"ens_number":-1}), 
+        scores["Brier"] = xs.threshold_brier_score(df_observation, df_model.chunk({"ens_number":-1}), 
                                          thresholds, member_dim='ens_number',
                                          dim=['y', 'x'])
-        scores["CRPS"] = xs.crps_ensemble(df_obs_masked, df_model_masked.chunk({"ens_number":-1}), 
+        scores["CRPS"] = xs.crps_ensemble(df_obs_masked_mean, df_model_masked.chunk({"ens_number":-1}), 
                                                                member_dim='ens_number', dim=['y', 'x'])
-        scores["RankHist"] = xs.rank_histogram(df_obs_masked.chunk({"time":1}), 
+        scores["RankHist"] = xs.rank_histogram(df_obs_masked_mean.chunk({"time":1}), 
                                       df_model_masked.chunk({"ens_number":-1, "time":1}), 
                                       dim=['y', 'x'], 
                                       member_dim='ens_number')
-        scores["Reliability"] = xs.reliability(df_obs_threshold_bool_winsize, df_model_threshold_bool_mean, 
+        scores["Reliability"] = xs.reliability(df_obs_threshold_bool, df_model_threshold_bool_mean, 
                                      probability_bin_edges=bin_edges, dim=['y', 'x'])
         
     else:
@@ -359,38 +359,26 @@ def process_data_single_init_time(
         scores["Reliability"] = None
 
     # Probabilistic FSS
-    scores["FSS_probabilistic"] = [
-        compute_fss(
-            df_obs_threshold_bool_winsize,
-            df_model_threshold_bool_winsize,
-            fss_version='pfss',
-            dim=['y', 'x'],
-            ens_dim='ens_number',
-            window_size=winsize
-            ).assign_coords(
-                {"window_size":((), winsize)}
-                ) for winsize in window_sizes
-        ]
+    scores["FSS_probabilistic"] = compute_fss(
+        df_obs_threshold_bool_winsize,
+        df_model_threshold_bool_winsize,
+        fss_version='pfss',
+        dim=['y', 'x'],
+        ens_dim='ens_number')
     
     # FSS per member
     # Determine if we have a single member or multiple ones
     if df_model_masked.sizes['ens_number'] > 1:
         
-        scores["FSS_deterministic"] = [
-            compute_fss(
-                df_obs_threshold_bool_winsize,
-                df_model_threshold_bool_winsize,
-                fss_version='fss',
-                dim=['y', 'x'],
-                ens_dim='ens_number',
-                window_size=winsize
-                ).assign_coords(
-                    {"window_size":((), winsize)}
-                    ) for winsize in window_sizes
-            ]
+        scores["FSS_per_member"] = compute_fss(
+            df_obs_threshold_bool_winsize,
+            df_model_threshold_bool_winsize,
+            fss_version='fss',
+            dim=['y', 'x'],
+            ens_dim='ens_number')
     else:
         scores["FSS_per_member"] = None
-
+    
     # Histogram
     histogram = xr.apply_ufunc(histogram_only,
                                df_model_threshold_bool_mean,
@@ -405,7 +393,7 @@ def process_data_single_init_time(
     # Contingency-based metrics for each step
     contingency = xs.Contingency(
         df_obs_threshold_bool_winsize,
-        df_obs_threshold_bool_winsize,
+        df_model_threshold_bool_winsize,
         observation_category_edges=np.array([0, 0.5, 1]),
         forecast_category_edges=np.array([0, 0.5, 1]),
         dim=['y', 'x']
@@ -416,10 +404,23 @@ def process_data_single_init_time(
     scores["CSI"] = contingency.threat_score()
 
     # Build the Xarray dataset for all scores
+    scores_cleaned = {
+        name: clean_dims(ds.rename({"precip_intensity": name}))
+        for name, ds in scores.items()
+    }
+    ds_scores = xr.merge(list(scores_cleaned.values()), compat="no_conflicts", join="outer")
+        
     ds_scores = xr.Dataset(
-        scores,
-        coords={'forecast_reference_time': ('forecast_reference_time', [init_time]),
-                'leadtime': ('leadtime', df_model_masked.leadtime.values)}
+        data_vars=ds_scores.data_vars,
+        coords={
+            "forecast_reference_time": ("forecast_reference_time", [init_time]),
+            "leadtime": ("leadtime", df_model_masked["leadtime"].values)
+        }
     )
     
     return ds_scores
+
+def clean_dims(ds):
+    if "ens_number" in ds.dims and ds.sizes["ens_number"] == 1:
+        return ds.squeeze("ens_number")  # or ds.drop_dims("ens_number")
+    return ds
