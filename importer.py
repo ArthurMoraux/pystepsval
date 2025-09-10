@@ -36,11 +36,11 @@ def test_xarray_dataset(ds):
     else:
         print(f"All required dimensions {required_dims} are present.")
 
-    # Check for 'precipitation_rate' variable
-    if 'precipitation' not in ds.data_vars:
-        raise ValueError("The dataset does not contain the required data variable 'precipitation'.")
+    # Check for 'precip_intensity' variable
+    if 'precip_intensity' not in ds.data_vars:
+        raise ValueError("The dataset does not contain the required data variable 'precip_intensity'.")
     else:
-        print("'precipitation' variable is present in the dataset.")
+        print("'precip_intensity' variable is present in the dataset.")
 
     return True
 
