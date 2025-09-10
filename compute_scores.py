@@ -6,16 +6,20 @@ import shutil
 import numpy as np
 import pandas as pd
 import xarray as xr
-from importer import read_netcdf, read_radar
-from processor import process_data_single_init_time
 import zarr
 import time
 import traceback
 import logging
 import sys
 
+pystepsval_path = "C:/Users/u0168535/.conda/envs/pysteps_dev/pysteps_master/merge"
+sys.path.append(pystepsval_path)
+from importer import read_netcdf, read_radar
+from processor import process_data_single_init_time
+
+
 # Configure logging
-log_dir = "/home/armoraux/Python/pysteps_eval/pystepsval/logs"
+log_dir = "C:/Users/u0168535/.conda/envs/pysteps_dev/pystepsval/refactoring_arthur/logs"
 os.makedirs(log_dir, exist_ok=True)
 log_fp = os.path.join(log_dir, "pysteps_scoring.log")
 logging.basicConfig(
@@ -32,9 +36,9 @@ traceback_log_dir = os.path.join(log_dir, "errors")
 os.makedirs(traceback_log_dir, exist_ok=True)
 
 # Paths definition
-pysteps_dir = "/mnt/afd_shelf/models/pysteps"
-local_data_dir = "/home/armoraux/Python/pysteps_eval/data/pysteps"
-scores_dir = "/home/armoraux/Python/pysteps_eval/data/scores"
+pysteps_dir = "C:/Users/u0168535/.conda/envs/pysteps_dev/pystepsval/refactoring_arthur/test_data/pysteps"
+local_data_dir = "C:/Users/u0168535/.conda/envs/pysteps_dev/pystepsval/refactoring_arthur/test_data/pysteps"
+scores_dir = "C:/Users/u0168535/.conda/envs/pysteps_dev/pystepsval/refactoring_arthur/test_data/scores"
 zarr_fp = os.path.join(scores_dir, "scores.zarr")
 
 # Create directories if they don't exist

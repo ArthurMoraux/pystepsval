@@ -10,8 +10,7 @@ from pysteps.io.readers import read_timeseries
 import datetime as dt
 import h5py
 
-
-def test_xarray_dataset(ds, is_observation):
+def test_xarray_dataset(ds):
     """
     Function to test the validity of an xarray dataset for specific requirements.
 
@@ -27,10 +26,7 @@ def test_xarray_dataset(ds, is_observation):
     else:
         print("Dataset is a valid xarray Dataset.")
 
-    if is_observation:
-        required_dims = {'valid_time', 'y', 'x'}
-    else:
-        required_dims = {'ens_number', 'valid_time', 'y', 'x'}
+    required_dims = {'time', 'y', 'x'}
 
     # Check for required dimensions
     missing_dims = required_dims - set(ds.dims)
@@ -76,22 +72,16 @@ def read_netcdf(filename):
         forecast_reference_time=((), pd.to_datetime(start_date))
     )
     
-    ds = ds.rename_dims({"time":"valid_time"})
-    ds = ds.rename_vars({"time":"valid_time"})
-    
     # add lead times to coordinates
-    step = ds.valid_time.data[1] - ds.valid_time.data[0]
-    steps = np.array([step + i * step for i in range(ds.sizes["valid_time"])])
-    ds = ds.assign_coords(leadtime=(("valid_time"), steps))
-    
-    # Rename variable, dimension and data names
-    ds = ds.rename({"precip_intensity":"precipitation"})
+    step = ds.time.data[1] - ds.time.data[0]
+    steps = np.array([step + i * step for i in range(ds.sizes["time"])])
+    ds = ds.assign_coords(leadtime=(("time"), steps))
     
 #     # chunk the data for use with dask
 #     ds = ds.chunk(dict(valid_time=1, ens_number=-1, y=-1, x=-1))
     print(f"done ({(time.time() - t0) / 60:.2f}m)")
     
-    if test_xarray_dataset(ds, is_observation=False):
+    if test_xarray_dataset(ds):
         return ds
     else:
         raise ValueError("The dataset does not pass the required checks.")
@@ -133,12 +123,12 @@ def read_radqpe_h5(file_path):
 # Read the RMI radar-QPE files given a DataArray of validdates
 # The location and filename format of the radar files is taken from the pysteps.rcparams specifications
 # validdates = pysteps.validtime
-def read_radar(valid_dates):
+def read_radar(datetimes):
     """Read RADQPE precipitation rate data for the specified dates, and return them as xr.Dataset 
     with the associated metadata.
     
     Args:
-        valid_dates (xr.DataArray): Array of dates for the RADQPE data to be read.
+        datetimes (xr.DataArray): Array of datetimes for the RADQPE data to be read.
     
     Returns:
         ds (xr.Dataset): Dataset of the RADQPE precipitation rate data, with the associated metadata.
@@ -153,10 +143,10 @@ def read_radar(valid_dates):
     fn_pattern = rmi.fn_pattern
     fn_ext = rmi.fn_ext
     importer_kwargs = rmi.importer_kwargs
-    startdate = valid_dates.isel(valid_time=0).data
-    enddate = valid_dates.isel(valid_time=len(valid_dates) - 1).data
+    startdate = datetimes.isel(time=0).data
+    enddate = datetimes.isel(time=len(datetimes) - 1).data
     # find the number of previous timesteps
-    timestep = (valid_dates.isel(valid_time=1).data - startdate) / np.timedelta64(1, "m")
+    timestep = (datetimes.isel(time=1).data - startdate) / np.timedelta64(1, "m")
     nprev = int((enddate - startdate) / np.timedelta64(1, "m") / timestep)
     # build the filenames
     print(enddate)
@@ -194,7 +184,7 @@ def read_radar(valid_dates):
     lon = lon.reshape(r.shape[1], r.shape[2])
     lat = lat.reshape(r.shape[1], r.shape[2])
 
-    short_name = 'precipitation'
+    short_name = 'precip_intensity'
     if meta['unit'] == 'mm/h':
         long_name = 'instantaneous precipitation rate'
         units = 'mm h-1'
@@ -202,15 +192,15 @@ def read_radar(valid_dates):
         # data variables
         data_vars={
             short_name: (
-                ['valid_time', 'y', 'x'],
+                ['time', 'y', 'x'],
                 vs,
                 {'long_name': long_name, 'units': units}
             )
         },
         # coordinates
         coords={
-            'valid_time': (
-                ['valid_time'],
+            'time': (
+                ['time'],
                 pd.to_datetime(meta['timestamps']),
             ),
             'x': (
@@ -258,7 +248,7 @@ def read_radar(valid_dates):
 #     ds = ds.chunk(dict(valid_time=1, y=-1, x=-1))
     print(f"done ({(time.time() - t0) / 60:.2f}m)")
 
-    if test_xarray_dataset(ds, is_observation=True):
+    if test_xarray_dataset(ds):
         return ds
     else:
         raise ValueError("The dataset does not pass the required checks.")
