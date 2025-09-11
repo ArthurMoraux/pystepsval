@@ -3,7 +3,6 @@ import pyproj
 import numpy as np
 import pandas as pd
 import time
-import pysteps
 from pysteps.io.importers import import_odim_hdf5 as importer
 from pysteps.io.archive import find_by_date
 from pysteps.io.readers import read_timeseries
@@ -72,6 +71,7 @@ def read_netcdf(filename):
         lat=(("y", "x"), ds.lat.data),
         forecast_reference_time=((), pd.to_datetime(start_date))
     )
+    ds = ds.drop_vars("lcc")
     
     # add lead times to coordinates
     step = ds.time.data[1] - ds.time.data[0]
@@ -124,7 +124,7 @@ def read_radqpe_h5(file_path):
 # Read the RMI radar-QPE files given a DataArray of validdates
 # The location and filename format of the radar files is taken from the pysteps.rcparams specifications
 # validdates = pysteps.validtime
-def read_radar(datetimes):
+def read_radar(datetimes, radar_path_dict):
     """Read RADQPE precipitation rate data for the specified dates, and return them as xr.Dataset 
     with the associated metadata.
     
@@ -137,13 +137,11 @@ def read_radar(datetimes):
     t0 = time.time()
     print("Reading RADAR data...", end="", flush=True)
     # get the radar paths and filename formats
-    rmi = pysteps.rcparams.data_sources.rmi
-    # root_path = rmi.root_path
-    root_path = "/mnt/RADQPE2/archive/"
-    path_fmt = rmi.path_fmt
-    fn_pattern = rmi.fn_pattern
-    fn_ext = rmi.fn_ext
-    importer_kwargs = rmi.importer_kwargs
+    root_path = radar_path_dict["root_path"]
+    path_fmt = radar_path_dict["path_fmt"]
+    fn_pattern = radar_path_dict["fn_pattern"]
+    fn_ext = radar_path_dict["fn_ext"]
+    importer_kwargs = radar_path_dict["importer_kwargs"]
     startdate = datetimes.isel(time=0).data
     enddate = datetimes.isel(time=len(datetimes) - 1).data
     # find the number of previous timesteps

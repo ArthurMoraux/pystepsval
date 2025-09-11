@@ -224,40 +224,40 @@ def process_data_single_init_time(
         start_time = print_timing_and_reset('\t', 'prepocessing', start_time)
     print("\tDone with all preprocessing for runtime: " + str(init_time))
 
-    # Deterministic scores
-    # Note: The deterministic scores are calculated on the ensemble mean
-    df_model_masked_mean = df_model_masked.mean(dim='ens_number')
+#     # Deterministic scores
+#     # Note: The deterministic scores are calculated on the ensemble mean
+#     df_model_masked_mean = df_model_masked.mean(dim='ens_number')
 
-    scores["RMSE_deterministic"] = xs.rmse(df_obs_masked, df_model_masked_mean, ["y", "x"], skipna=True)
-    scores["ME_deterministic"] = xs.me(df_obs_masked, df_model_masked_mean, ["y", "x"], skipna=True)
-    scores["MAPE_deterministic"] = xs.mape(df_obs_masked, df_model_masked_mean, ["y", "x"], skipna=True)
+#     scores["RMSE_deterministic"] = xs.rmse(df_obs_masked, df_model_masked_mean, ["y", "x"], skipna=True)
+#     scores["ME_deterministic"] = xs.me(df_obs_masked, df_model_masked_mean, ["y", "x"], skipna=True)
+#     scores["MAPE_deterministic"] = xs.mape(df_obs_masked, df_model_masked_mean, ["y", "x"], skipna=True)
 
-    # Probabilistic scores
-    if df_model_masked.sizes['ens_number'] > 1:
-        scores["RMSE_probabilistic"] = xs.rmse(df_obs_masked, df_model_masked, ["y", "x"], skipna=True)
-        scores["ME_probabilistic"] = xs.me(df_obs_masked, df_model_masked, ["y", "x"], skipna=True)
-        scores["MAPE_probabilistic"] = xs.mape(df_obs_masked, df_model_masked, ["y", "x"], skipna=True)
-        scores["Brier"] = xs.threshold_brier_score(df_obs_masked, df_model_masked.chunk({"ens_number":-1}), 
-                                         thresholds, member_dim='ens_number',
-                                         dim=['y', 'x'])
-        scores["CRPS"] = xs.crps_ensemble(df_obs_masked, df_model_masked.chunk({"ens_number":-1}), 
-                                                               member_dim='ens_number', dim=['y', 'x'])
-        scores["RankHist"] = xs.rank_histogram(df_obs_masked.chunk({"time":1}), 
-                                      df_model_masked.chunk({"ens_number":-1, "time":1}), 
-                                      dim=['y', 'x'], 
-                                      member_dim='ens_number')
-        scores["Reliability"] = xs.reliability(df_obs_threshold_bool, df_model_threshold_bool.mean(dim='ens_number'), 
-                                     probability_bin_edges=bin_edges, dim=['y', 'x'])
+#     # Probabilistic scores
+#     if df_model_masked.sizes['ens_number'] > 1:
+#         scores["RMSE_probabilistic"] = xs.rmse(df_obs_masked, df_model_masked, ["y", "x"], skipna=True)
+#         scores["ME_probabilistic"] = xs.me(df_obs_masked, df_model_masked, ["y", "x"], skipna=True)
+#         scores["MAPE_probabilistic"] = xs.mape(df_obs_masked, df_model_masked, ["y", "x"], skipna=True)
+#         scores["Brier"] = xs.threshold_brier_score(df_obs_masked, df_model_masked.chunk({"ens_number":-1}), 
+#                                          thresholds, member_dim='ens_number',
+#                                          dim=['y', 'x'])
+#         scores["CRPS"] = xs.crps_ensemble(df_obs_masked, df_model_masked.chunk({"ens_number":-1}), 
+#                                                                member_dim='ens_number', dim=['y', 'x'])
+#         scores["RankHist"] = xs.rank_histogram(df_obs_masked.chunk({"time":1}), 
+#                                       df_model_masked.chunk({"ens_number":-1, "time":1}), 
+#                                       dim=['y', 'x'], 
+#                                       member_dim='ens_number')
+#         scores["Reliability"] = xs.reliability(df_obs_threshold_bool, df_model_threshold_bool.mean(dim='ens_number'), 
+#                                      probability_bin_edges=bin_edges, dim=['y', 'x'])
 
-    else:
-        # If no ensemble dimension, set probabilistic scores to None
-        scores["RMSE_probabilistic"] = None
-        scores["ME_probabilistic"] = None
-        scores["MAPE_probabilistic"] = None
-        scores["Brier"] = None
-        scores["CRPS"] = None
-        scores["RankHist"] = None
-        scores["Reliability"] = None
+#     else:
+#         # If no ensemble dimension, set probabilistic scores to None
+#         scores["RMSE_probabilistic"] = None
+#         scores["ME_probabilistic"] = None
+#         scores["MAPE_probabilistic"] = None
+#         scores["Brier"] = None
+#         scores["CRPS"] = None
+#         scores["RankHist"] = None
+#         scores["Reliability"] = None
 
     # Probabilistic FSS
     fractional_skill_scores_prob = []
@@ -327,33 +327,33 @@ def process_data_single_init_time(
         scores["FSS_per_member"] = None
 
     # Histogram
-    df_model_masked_ens_mean = df_model_threshold_bool.mean('ens_number')
-    df_model_masked_ens_mean = df_model_masked_ens_mean.chunk({'y': -1, 'x': -1})
+#     df_model_masked_ens_mean = df_model_threshold_bool.mean('ens_number')
+#     df_model_masked_ens_mean = df_model_masked_ens_mean.chunk({'y': -1, 'x': -1})
 
-    histogram = xr.apply_ufunc(histogram_only,
-                               df_model_masked_ens_mean,
-                               kwargs={'bins': bin_edges},
-                               input_core_dims=[['x', 'y']],
-                               output_core_dims=[['bins_x']],
-                               dask_gufunc_kwargs={'output_sizes': {'bins_x': bins_x_len}},
-                               dask='parallelized',
-                               vectorize=True)
+#     histogram = xr.apply_ufunc(histogram_only,
+#                                df_model_masked_ens_mean,
+#                                kwargs={'bins': bin_edges},
+#                                input_core_dims=[['x', 'y']],
+#                                output_core_dims=[['bins_x']],
+#                                dask_gufunc_kwargs={'output_sizes': {'bins_x': bins_x_len}},
+#                                dask='parallelized',
+#                                vectorize=True)
 
-    scores["Histogram"] = histogram.assign_coords(bins_x=bins_x)
+#     scores["Histogram"] = histogram.assign_coords(bins_x=bins_x)
 
-    # Contingency-based metrics for each step
-    contingency = xs.Contingency(
-        df_obs_threshold_bool,
-        df_model_threshold_bool,
-        observation_category_edges=np.array([0, 0.5, 1]),
-        forecast_category_edges=np.array([0, 0.5, 1]),
-        dim=['y', 'x']
-    )
+#     # Contingency-based metrics for each step
+#     contingency = xs.Contingency(
+#         df_obs_threshold_bool,
+#         df_model_threshold_bool,
+#         observation_category_edges=np.array([0, 0.5, 1]),
+#         forecast_category_edges=np.array([0, 0.5, 1]),
+#         dim=['y', 'x']
+#     )
 
-    scores["POD"] = contingency.hit_rate()
-    scores["FAR"] = contingency.false_alarm_ratio()
-    scores["ETS"] = contingency.equit_threat_score()
-    scores["CSI"] = contingency.threat_score()
+#     scores["POD"] = contingency.hit_rate()
+#     scores["FAR"] = contingency.false_alarm_ratio()
+#     scores["ETS"] = contingency.equit_threat_score()
+#     scores["CSI"] = contingency.threat_score()
 
     # Build the Xarray dataset for all scores
     ds_scores = delayed(xr.Dataset)(

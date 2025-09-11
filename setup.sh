@@ -1,4 +1,15 @@
-#!/bin/bash
+#!/bin/bash -l
+
+# Source conda initialization - adjust path based on your conda installation
+if [ -f "$HOME/miniconda3/etc/profile.d/conda.sh" ]; then
+    source "$HOME/miniconda3/etc/profile.d/conda.sh"
+elif [ -f "$HOME/anaconda3/etc/profile.d/conda.sh" ]; then
+    source "$HOME/anaconda3/etc/profile.d/conda.sh"
+else
+    echo "Conda initialization file not found. Please check your conda installation."
+    exit 1
+fi
+
 
 # Check if the script is running inside a conda environment
 if [[ -z "$CONDA_DEFAULT_ENV" ]]; then
@@ -77,14 +88,12 @@ fi
 
 
 # Compile Fortran module with f2py
-
-
 cd "$REPO_DIR"
 
 # Check if the file fss90.cpython-311-x86_64-linux-gnu.so does not exist
 if [ ! -f "fss90.cpython-311-x86_64-linux-gnu.so" ]; then
     # Compile with f2py if the file is not present
-    f2py -c -m fss90 ./code/mod_fss.f90 --f90flags="-O3"
+    $CONDA_PREFIX/bin/python -m numpy.f2py -c -m fss90 ./code/mod_fss.f90 --f90flags="-O3"
 else
 	echo "Fortran code has already been installed"
 fi
